@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  logiroute-control-tower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: logiroute-ai
+    ports:
+      - "8000:8000"
+    environment:
+      - LOGIROUTE_ENV=production
+      - LOGIROUTE_SEED=42
+    restart: unless-stopped
