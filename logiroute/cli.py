@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--evaluate",
         action="store_true",
-        help="Train all ML models, run CVRPTW & Inventory solvers, and print benchmark metrics.",
+        help="Train all ML models, run CVRPTW, Inventory, Anomaly & MLOps pipelines, and print benchmark metrics.",
     )
     parser.add_argument(
         "--simulate",
@@ -95,13 +95,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"  {idx}. {rec}")
         return 0
 
-    # Default / --evaluate report
     vrp_res = orchestrator.run_vrp_optimization(VRPOptimizationRequest())
     inv_res = orchestrator.run_inventory_optimization()
+    anom_res = orchestrator.run_anomaly_detection(top_k=5)
+    drift_res = orchestrator.run_drift_evaluation(drift_regime="nominal")
+    pareto_res = orchestrator.run_pareto_frontier()
 
     report = {
         "initialization": init_summary,
         "vrp_benchmark": vrp_res.benchmark.model_dump(),
+        "pareto_frontier": {
+            "evaluated_policies": pareto_res.evaluated_policies,
+            "pareto_optimal_count": pareto_res.pareto_optimal_count,
+            "recommended_policy_id": pareto_res.recommended_policy_id,
+        },
         "inventory_summary": {
             "target_service_level_pct": inv_res.target_service_level_pct,
             "total_skus_evaluated": inv_res.total_skus_evaluated,
@@ -110,6 +117,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             "total_recommended_po_value_usd": inv_res.total_recommended_po_value_usd,
             "total_annual_inventory_cost_usd": inv_res.total_annual_inventory_cost_usd,
         },
+        "anomaly_detection": {
+            "detector_algorithm": anom_res.detector_algorithm,
+            "anomalies_detected": anom_res.anomalies_detected,
+            "validation_metrics": anom_res.validation_metrics,
+        },
+        "mlops_drift": {
+            "overall_health_score": drift_res.overall_health_score,
+            "retraining_recommended": drift_res.retraining_recommended,
+        },
     }
 
     if args.json:
@@ -117,12 +133,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         dm = init_summary["demand_forecaster_metrics"]
         em = init_summary["eta_predictor_metrics"]
+        am = init_summary["anomaly_detector_metrics"]
         vb = vrp_res.benchmark
         print("=" * 76)
         print("LOGIROUTE AI — ENTERPRISE SUPPLY CHAIN & LOGISTICS ML BENCHMARK REPORT")
         print("=" * 76)
         print(f"Pipeline Initialization Time : {init_summary['startup_time_ms']:.1f} ms\n")
-        print("[1] Probabilistic Demand Forecaster (Quantile GBDT: P10 / P50 / P90)")
+        print("[1] Probabilistic Demand Forecaster (Quantile GBDT: P10 / P50 / P90 + CQR)")
         print(f"    - Holdout WMAPE          : {dm['wmape_pct']:.2f}%")
         print(f"    - Holdout MAPE           : {dm['mape_pct']:.2f}%")
         print(f"    - Holdout RMSE           : {dm['rmse_units']:.2f} units")
@@ -145,7 +162,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"    - Target Service Level   : {inv_res.target_service_level_pct:.1f}%")
         print(f"    - SKU x Hub Nodes        : {inv_res.total_skus_evaluated}")
         print(f"    - Reorder Triggered      : {inv_res.reorder_triggered_count} ({inv_res.critical_stockout_alerts} critical)")
-        print(f"    - Recommended PO Value   : ${inv_res.total_recommended_po_value_usd:,.2f}")
+        print(f"    - Recommended PO Value   : ${inv_res.total_recommended_po_value_usd:,.2f}\n")
+        print("[5] Multivariate Supply Chain Anomaly Detector (IsolationForest + Z-Score)")
+        print(f"    - Anomaly ROC-AUC        : {am['roc_auc']:.4f}")
+        print(f"    - Anomaly PR-AUC         : {am['pr_auc']:.4f}")
+        print(f"    - Anomaly F1-Score       : {am['f1_score']:.4f}")
+        print(f"    - Active Anomalies       : {anom_res.anomalies_detected} / {anom_res.total_events_scanned}\n")
+        print("[6] MLOps Drift & Pareto Multi-Objective Governance")
+        print(f"    - Model Health Score     : {drift_res.overall_health_score:.1f} / 100")
+        print(f"    - Pareto-Optimal Regimes : {pareto_res.pareto_optimal_count} / {pareto_res.evaluated_policies} policies")
         print("=" * 76)
 
     return 0

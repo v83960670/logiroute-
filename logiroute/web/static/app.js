@@ -22,6 +22,8 @@ const state = {
   demandChart: null,
   featureImpChart: null,
   etaAttrChart: null,
+  paretoChart: null,
+  psiChart: null,
 };
 
 function formatHourClock(decHour) {
@@ -61,6 +63,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderDemandForecastSection(overview.default_forecast);
     renderETASection(overview.sample_eta);
     renderInventorySection(overview.inventory);
+    renderMLOpsSection(overview.mlops_drift, overview.anomalies, overview.pareto_frontier);
 
     const statusEl = document.getElementById("engine-status-text");
     if (statusEl) {
@@ -617,6 +620,216 @@ function renderInventorySection(invData) {
     .join("");
 }
 
+/* ==================== TAB 5: MLOPS DRIFT, ANOMALIES & PARETO FRONTIER ==================== */
+function renderMLOpsSection(driftData, anomaliesData, paretoData) {
+  if (driftData) renderDriftMonitor(driftData);
+  if (paretoData) renderParetoFrontier(paretoData);
+  if (anomaliesData) renderAnomaliesTable(anomaliesData);
+}
+
+function renderDriftMonitor(driftData) {
+  const scoreEl = document.getElementById("mlops-health-score");
+  const badgeEl = document.getElementById("mlops-retrain-badge");
+  const reasonEl = document.getElementById("mlops-retrain-reason");
+
+  if (scoreEl) {
+    scoreEl.textContent = `${driftData.overall_health_score.toFixed(1)} / 100`;
+    scoreEl.style.color = driftData.retraining_recommended ? "#f43f5e" : "#10b981";
+  }
+
+  if (badgeEl) {
+    badgeEl.textContent = driftData.retraining_recommended ? "RETRAIN REQUIRED" : "STABLE";
+    badgeEl.className = "badge " + (driftData.retraining_recommended ? "badge-danger" : "badge-ok");
+  }
+
+  if (reasonEl) {
+    reasonEl.textContent = driftData.retraining_trigger_reason;
+  }
+
+  const tbody = document.getElementById("mlops-drift-tbody");
+  if (tbody && driftData.monitored_features) {
+    tbody.innerHTML = driftData.monitored_features
+      .map((f) => {
+        const badgeCls =
+          f.drift_status === "CRITICAL_DRIFT"
+            ? "badge-danger"
+            : f.drift_status === "MODERATE_DRIFT"
+            ? "badge-warn"
+            : "badge-ok";
+        return `
+          <tr>
+            <td class="mono"><strong>${f.feature_name}</strong></td>
+            <td class="mono">${f.baseline_mean.toFixed(2)} → ${f.current_mean.toFixed(2)} (${f.shift_pct >= 0 ? "+" : ""}${f.shift_pct.toFixed(1)}%)</td>
+            <td class="mono"><strong>${f.psi_score.toFixed(3)}</strong></td>
+            <td class="mono">${f.ks_statistic.toFixed(3)} (p=${f.ks_p_value.toFixed(3)})</td>
+            <td class="mono">${f.wasserstein_norm.toFixed(3)}σ</td>
+            <td><span class="badge ${badgeCls}">${f.drift_status}</span></td>
+          </tr>
+        `;
+      })
+      .join("");
+  }
+
+  const psiCtx = document.getElementById("mlops-psi-chart");
+  if (psiCtx && typeof Chart !== "undefined" && driftData.monitored_features) {
+    if (state.psiChart) state.psiChart.destroy();
+    const feats = driftData.monitored_features;
+    state.psiChart = new Chart(psiCtx, {
+      type: "bar",
+      data: {
+        labels: feats.map((f) => f.feature_name),
+        datasets: [
+          {
+            label: "Population Stability Index (PSI)",
+            data: feats.map((f) => f.psi_score),
+            backgroundColor: feats.map((f) =>
+              f.psi_score >= 0.25
+                ? "rgba(244, 63, 94, 0.75)"
+                : f.psi_score >= 0.1
+                ? "rgba(245, 158, 11, 0.75)"
+                : "rgba(16, 185, 129, 0.75)"
+            ),
+            borderRadius: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            ticks: { color: "#94a3b8", font: { family: "JetBrains Mono", size: 10.5 } },
+            grid: { display: false },
+          },
+          y: {
+            ticks: { color: "#94a3b8" },
+            grid: { color: "rgba(30, 45, 74, 0.4)" },
+            title: { display: true, text: "PSI Score", color: "#94a3b8" },
+          },
+        },
+      },
+    });
+  }
+}
+
+function renderParetoFrontier(paretoData) {
+  const tbody = document.getElementById("pareto-tbody");
+  if (tbody && paretoData.solutions) {
+    tbody.innerHTML = paretoData.solutions
+      .map((s) => {
+        const badge = s.is_pareto_optimal
+          ? `<span class="badge badge-ok">PARETO OPTIMAL</span>`
+          : `<span class="badge badge-neutral">DOMINATED</span>`;
+        return `
+          <tr>
+            <td><strong>${s.policy_id}</strong> — ${s.policy_name}</td>
+            <td class="mono">$${s.daily_cost_usd.toFixed(0)}</td>
+            <td class="mono">${s.daily_co2_kg.toFixed(1)} kg</td>
+            <td class="mono">${s.total_distance_km.toFixed(1)} km</td>
+            <td class="mono">${s.ev_fleet_share_pct.toFixed(0)}%</td>
+            <td class="mono">${s.expected_sla_otd_pct.toFixed(1)}%</td>
+            <td>${badge}</td>
+          </tr>
+        `;
+      })
+      .join("");
+  }
+
+  const pCtx = document.getElementById("pareto-frontier-chart");
+  if (pCtx && typeof Chart !== "undefined" && paretoData.solutions) {
+    if (state.paretoChart) state.paretoChart.destroy();
+    const paretoPts = paretoData.solutions
+      .filter((s) => s.is_pareto_optimal)
+      .sort((a, b) => a.daily_co2_kg - b.daily_co2_kg);
+    const domPts = paretoData.solutions.filter((s) => !s.is_pareto_optimal);
+
+    state.paretoChart = new Chart(pCtx, {
+      type: "scatter",
+      data: {
+        datasets: [
+          {
+            label: "Pareto-Optimal Frontier (Non-Dominated)",
+            data: paretoPts.map((s) => ({
+              x: s.daily_co2_kg,
+              y: s.daily_cost_usd,
+              label: s.policy_name,
+            })),
+            backgroundColor: "#10b981",
+            borderColor: "#06b6d4",
+            showLine: true,
+            borderWidth: 2,
+            pointRadius: 6,
+          },
+          {
+            label: "Dominated Legacy / Suboptimal Policies",
+            data: domPts.map((s) => ({
+              x: s.daily_co2_kg,
+              y: s.daily_cost_usd,
+              label: s.policy_name,
+            })),
+            backgroundColor: "#f43f5e",
+            borderColor: "#f43f5e",
+            pointRadius: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: "#cbd5e1", font: { size: 11 } } },
+        },
+        scales: {
+          x: {
+            title: { display: true, text: "Daily Carbon Footprint (kg CO₂e)", color: "#94a3b8" },
+            ticks: { color: "#94a3b8" },
+            grid: { color: "rgba(30, 45, 74, 0.4)" },
+          },
+          y: {
+            title: { display: true, text: "Daily Dispatch Cost (USD)", color: "#94a3b8" },
+            ticks: { color: "#94a3b8" },
+            grid: { color: "rgba(30, 45, 74, 0.4)" },
+          },
+        },
+      },
+    });
+  }
+}
+
+function renderAnomaliesTable(anomData) {
+  const badge = document.getElementById("anom-metrics-badge");
+  if (badge && anomData.validation_metrics) {
+    const vm = anomData.validation_metrics;
+    badge.textContent = `ROC-AUC: ${vm.roc_auc.toFixed(4)} | PR-AUC: ${vm.pr_auc.toFixed(4)} | F1: ${vm.f1_score.toFixed(3)}`;
+  }
+
+  const tbody = document.getElementById("anomalies-tbody");
+  if (!tbody || !anomData.events) return;
+
+  tbody.innerHTML = anomData.events
+    .map((ev) => {
+      const sevClass =
+        ev.severity === "CRITICAL"
+          ? "badge-danger"
+          : ev.severity === "HIGH"
+          ? "badge-warn"
+          : "badge-info";
+      return `
+        <tr>
+          <td class="mono"><strong>${ev.event_id}</strong><br/><span style="color:#64748b;font-size:11px">${ev.timestamp}</span></td>
+          <td><strong>${ev.hub_id}</strong><br/><span class="mono" style="color:#94a3b8;font-size:11px">${ev.sku_id}</span></td>
+          <td class="mono">${ev.anomaly_type}</td>
+          <td><span class="badge ${sevClass}">${ev.severity}</span></td>
+          <td class="mono"><strong>${ev.anomaly_score.toFixed(3)}</strong></td>
+          <td class="mono">${ev.root_cause_signal}</td>
+          <td style="color:#cbd5e1;max-width:340px">${ev.automated_mitigation}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
 /* ==================== INTERACTIVE LISTENERS ==================== */
 function setupControlListeners() {
   // Slider live readouts
@@ -711,6 +924,19 @@ function setupControlListeners() {
 
   document.getElementById("inv-status-filter")?.addEventListener("change", () => {
     if (state.inventoryData) renderInventorySection(state.inventoryData);
+  });
+
+  // MLOps Drift button
+  document.getElementById("btn-run-mlops-drift")?.addEventListener("click", async () => {
+    const regime = document.getElementById("mlops-drift-select")?.value || "nominal";
+    const driftRes = await apiFetch(`/api/v1/mlops/drift?drift_regime=${encodeURIComponent(regime)}`);
+    renderDriftMonitor(driftRes);
+  });
+
+  document.getElementById("mlops-drift-select")?.addEventListener("change", async (e) => {
+    const regime = e.target.value || "nominal";
+    const driftRes = await apiFetch(`/api/v1/mlops/drift?drift_regime=${encodeURIComponent(regime)}`);
+    renderDriftMonitor(driftRes);
   });
 
   // Close scenario banner

@@ -6,9 +6,12 @@ Exposes RESTful endpoints for:
 - /api/v1/overview            : Unified Control Tower state & KPIs
 - /api/v1/catalog             : Network hubs, SKUs, and fleet vehicle classes
 - /api/v1/routes/optimize     : CVRPTW multi-stop route optimization
+- /api/v1/routes/pareto       : Multi-objective Cost vs. Carbon vs. SLA Pareto Frontier
 - /api/v1/forecast            : Conformalized Quantile Demand Forecasting (P10/P50/P90)
 - /api/v1/eta/predict         : Traffic & Weather-Aware ETA & SLA Delay Risk inference
 - /api/v1/inventory/optimize  : Multi-Echelon Stochastic (s, S) Inventory Optimization
+- /api/v1/anomalies           : Multivariate IsolationForest Supply Chain Anomaly Detection
+- /api/v1/mlops/drift         : Production MLOps PSI / KS / Wasserstein Covariate Drift Monitor
 - /api/v1/scenarios/simulate  : End-to-end Supply Chain Disruption Stress-Testing
 """
 
@@ -26,10 +29,13 @@ from fastapi.staticfiles import StaticFiles
 from logiroute import __version__
 from logiroute.pipeline.orchestrator import ControlTowerOrchestrator
 from logiroute.schemas import (
+    AnomalyDetectionResponse,
     DemandForecastResponse,
     ETAPredictionRequest,
     ETAPredictionResponse,
     InventoryOptimizationResponse,
+    MLOpsDriftResponse,
+    ParetoFrontierResponse,
     ScenarioSimulationRequest,
     ScenarioSimulationResponse,
     VRPOptimizationRequest,
@@ -52,8 +58,9 @@ app = FastAPI(
     description=(
         "Enterprise AI/ML & Operations Research Engine for Probabilistic Demand "
         "Forecasting (CQR Quantile GBDT), Capacitated Vehicle Routing with Time "
-        "Windows (CVRPTW), Traffic-Aware ETA & SLA Delay Risk Prediction, and "
-        "Multi-Echelon Stochastic Inventory Optimization."
+        "Windows (CVRPTW), Multi-Objective Pareto Frontier Optimization, "
+        "Traffic-Aware ETA & SLA Delay Risk Prediction, Multi-Echelon Stochastic "
+        "Inventory Control, IsolationForest Anomaly Detection, and MLOps Drift Monitoring."
     ),
     version=__version__,
     lifespan=lifespan,
@@ -105,6 +112,15 @@ def optimize_routes(req: VRPOptimizationRequest) -> VRPOptimizationResponse:
     return orchestrator.run_vrp_optimization(req)
 
 
+@app.get("/api/v1/routes/pareto", response_model=ParetoFrontierResponse)
+def get_pareto_frontier(
+    demand_multiplier: float = Query(
+        default=1.0, ge=0.4, le=3.0, description="Demand volume scaling factor"
+    ),
+) -> ParetoFrontierResponse:
+    return orchestrator.run_pareto_frontier(demand_multiplier=demand_multiplier)
+
+
 @app.get("/api/v1/forecast", response_model=DemandForecastResponse)
 def get_demand_forecast(
     sku_id: str = Query(default="SKU-PHM-101", description="SKU identifier"),
@@ -144,6 +160,23 @@ def optimize_inventory(
         demand_multiplier=demand_multiplier,
         lead_time_shock_multiplier=lead_time_shock_multiplier,
     )
+
+
+@app.get("/api/v1/anomalies", response_model=AnomalyDetectionResponse)
+def get_anomalies(
+    top_k: int = Query(default=15, ge=3, le=50, description="Number of top anomalies to return"),
+) -> AnomalyDetectionResponse:
+    return orchestrator.run_anomaly_detection(top_k=top_k)
+
+
+@app.get("/api/v1/mlops/drift", response_model=MLOpsDriftResponse)
+def evaluate_mlops_drift(
+    drift_regime: str = Query(
+        default="nominal",
+        description="Drift simulation regime: 'nominal', 'seasonal_shift', or 'monsoon_cov_shift'",
+    ),
+) -> MLOpsDriftResponse:
+    return orchestrator.run_drift_evaluation(drift_regime=drift_regime)
 
 
 @app.post("/api/v1/scenarios/simulate", response_model=ScenarioSimulationResponse)

@@ -200,3 +200,69 @@ class ScenarioSimulationResponse(BaseModel):
     network_sla_risk_pct: float
     resilience_score: float
     executive_recommendations: List[str]
+
+
+class TelemetryAnomalyEvent(BaseModel):
+    event_id: str
+    timestamp: str
+    hub_id: str
+    hub_name: str
+    sku_id: str
+    anomaly_type: str
+    severity: str
+    anomaly_score: float
+    observed_value: float
+    expected_baseline: float
+    deviation_z_score: float
+    root_cause_signal: str
+    automated_mitigation: str
+
+
+class AnomalyDetectionResponse(BaseModel):
+    detector_algorithm: str
+    total_events_scanned: int
+    anomalies_detected: int
+    anomaly_rate_pct: float
+    validation_metrics: Dict[str, float]
+    events: List[TelemetryAnomalyEvent]
+
+
+class FeatureDriftMetric(BaseModel):
+    feature_name: str
+    baseline_mean: float
+    current_mean: float
+    shift_pct: float
+    psi_score: float
+    ks_statistic: float
+    ks_p_value: float
+    wasserstein_norm: float
+    drift_status: str
+
+
+class MLOpsDriftResponse(BaseModel):
+    drift_regime: str
+    overall_health_score: float
+    retraining_recommended: bool
+    retraining_trigger_reason: str
+    monitored_features: List[FeatureDriftMetric]
+
+
+class ParetoSolutionPoint(BaseModel):
+    policy_id: str
+    policy_name: str
+    description: str
+    daily_cost_usd: float
+    daily_co2_kg: float
+    total_distance_km: float
+    expected_sla_otd_pct: float
+    ev_fleet_share_pct: float
+    vehicles_dispatched: int
+    is_pareto_optimal: bool
+
+
+class ParetoFrontierResponse(BaseModel):
+    evaluated_policies: int
+    pareto_optimal_count: int
+    recommended_policy_id: str
+    solutions: List[ParetoSolutionPoint]
+

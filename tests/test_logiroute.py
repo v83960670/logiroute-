@@ -17,9 +17,12 @@ from fastapi.testclient import TestClient
 
 from logiroute.api.main import app
 from logiroute.data.synthetic_generator import SupplyChainDataGenerator, haversine_km
+from logiroute.mlops.drift_monitor import MLOpsDriftMonitor
+from logiroute.models.anomaly_detector import SupplyChainAnomalyDetector
 from logiroute.models.demand_forecaster import ProbabilisticDemandForecaster
 from logiroute.models.eta_predictor import ETADelayRiskPredictor
 from logiroute.optimization.inventory_optimizer import StochasticInventoryOptimizer
+from logiroute.optimization.pareto_frontier import ParetoFrontierOptimizer
 from logiroute.optimization.vrp_solver import CVRPTWSolver
 from logiroute.schemas import ETAPredictionRequest
 
@@ -239,3 +242,53 @@ def test_fastapi_endpoints() -> None:
     )
     assert r_sim.status_code == 200
     assert 0.0 <= r_sim.json()["resilience_score"] <= 100.0
+
+    # Anomaly Detection endpoint
+    r_anom = client.get("/api/v1/anomalies?top_k=8")
+    assert r_anom.status_code == 200
+    assert len(r_anom.json()["events"]) == 8
+
+    # MLOps Drift endpoint
+    r_drift = client.get("/api/v1/mlops/drift?drift_regime=monsoon_cov_shift")
+    assert r_drift.status_code == 200
+    assert r_drift.json()["retraining_recommended"] is True
+
+    # Pareto Frontier endpoint
+    r_pareto = client.get("/api/v1/routes/pareto?demand_multiplier=1.0")
+    assert r_pareto.status_code == 200
+    assert r_pareto.json()["pareto_optimal_count"] >= 2
+
+
+def test_supply_chain_anomaly_detector() -> None:
+    detector = SupplyChainAnomalyDetector(random_state=42)
+    metrics = detector.fit()
+    assert metrics["roc_auc"] > 0.92
+    assert metrics["f1_score"] > 0.85
+
+    res = detector.detect_anomalies(top_k=10)
+    assert res.anomalies_detected > 0
+    assert len(res.events) == 10
+    assert res.events[0].anomaly_score >= res.events[-1].anomaly_score
+
+
+def test_mlops_drift_monitor() -> None:
+    monitor = MLOpsDriftMonitor(seed=42)
+    nom = monitor.evaluate_drift("nominal")
+    shift = monitor.evaluate_drift("monsoon_cov_shift")
+
+    assert nom.retraining_recommended is False
+    assert shift.retraining_recommended is True
+    assert shift.overall_health_score < nom.overall_health_score
+
+
+def test_pareto_frontier_optimizer(generator: SupplyChainDataGenerator) -> None:
+    nodes = generator.generate_daily_dispatch_nodes()
+    pareto = ParetoFrontierOptimizer()
+    res = pareto.compute_frontier(nodes=nodes, demand_multiplier=1.0)
+
+    assert res.evaluated_policies == 6
+    assert 2 <= res.pareto_optimal_count <= 5
+    by_id = {s.policy_id: s for s in res.solutions}
+    assert by_id["POL-PARETO-BAL"].is_pareto_optimal is True
+    assert by_id["POL-LEGACY-BASE"].is_pareto_optimal is False
+

@@ -2,26 +2,34 @@
 Supply Chain Control Tower Orchestrator.
 
 Coordinates data generation, ML model training/inference (Quantile Demand
-Forecasting + Traffic-Aware ETA & SLA Risk), and Operations Research solvers
-(CVRPTW Fleet Routing + Multi-Echelon Stochastic Inventory Optimization).
+Forecasting + Traffic-Aware ETA & SLA Risk + IsolationForest Anomaly Detection),
+MLOps Observability (PSI / KS / Wasserstein Drift Monitoring), and Operations
+Research solvers (CVRPTW Fleet Routing + Multi-Objective Pareto Frontier +
+Multi-Echelon Stochastic Inventory Optimization).
 """
 
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from logiroute.config import DEFAULT_FLEET_CLASSES, DEFAULT_REGIONAL_NODES, DEFAULT_SKUS, SETTINGS
 from logiroute.data.synthetic_generator import SupplyChainDataGenerator
+from logiroute.mlops.drift_monitor import MLOpsDriftMonitor
+from logiroute.models.anomaly_detector import SupplyChainAnomalyDetector
 from logiroute.models.demand_forecaster import ProbabilisticDemandForecaster
 from logiroute.models.eta_predictor import ETADelayRiskPredictor
 from logiroute.optimization.inventory_optimizer import StochasticInventoryOptimizer
+from logiroute.optimization.pareto_frontier import ParetoFrontierOptimizer
 from logiroute.optimization.vrp_solver import CVRPTWSolver
 from logiroute.schemas import (
+    AnomalyDetectionResponse,
     DemandForecastResponse,
     ETAPredictionRequest,
     ETAPredictionResponse,
     InventoryOptimizationResponse,
+    MLOpsDriftResponse,
+    ParetoFrontierResponse,
     ScenarioSimulationRequest,
     ScenarioSimulationResponse,
     VRPOptimizationRequest,
@@ -37,7 +45,10 @@ class ControlTowerOrchestrator:
         self.data_generator = SupplyChainDataGenerator(seed=seed)
         self.demand_forecaster = ProbabilisticDemandForecaster(random_state=seed)
         self.eta_predictor = ETADelayRiskPredictor(random_state=seed)
+        self.anomaly_detector = SupplyChainAnomalyDetector(random_state=seed)
+        self.drift_monitor = MLOpsDriftMonitor(seed=seed)
         self.vrp_solver = CVRPTWSolver()
+        self.pareto_optimizer = ParetoFrontierOptimizer(self.vrp_solver)
         self.inventory_optimizer = StochasticInventoryOptimizer(seed=seed)
         self.is_ready: bool = False
         self.startup_time_ms: float = 0.0
@@ -51,6 +62,7 @@ class ControlTowerOrchestrator:
 
         demand_metrics = self.demand_forecaster.fit(demand_df, holdout_days=30)
         eta_metrics = self.eta_predictor.fit(shipment_df)
+        anomaly_metrics = self.anomaly_detector.fit()
 
         self._cached_nodes = self.data_generator.generate_daily_dispatch_nodes(demand_multiplier=1.0)
         self.is_ready = True
@@ -61,6 +73,7 @@ class ControlTowerOrchestrator:
             "startup_time_ms": self.startup_time_ms,
             "demand_forecaster_metrics": demand_metrics,
             "eta_predictor_metrics": eta_metrics,
+            "anomaly_detector_metrics": anomaly_metrics,
         }
 
     def get_catalog_metadata(self) -> Dict[str, Any]:
@@ -162,6 +175,23 @@ class ControlTowerOrchestrator:
             lead_time_shock_multiplier=lead_time_shock_multiplier,
         )
 
+    def run_anomaly_detection(self, top_k: int = 15) -> AnomalyDetectionResponse:
+        if not self.is_ready:
+            self.initialize()
+        return self.anomaly_detector.detect_anomalies(top_k=top_k)
+
+    def run_drift_evaluation(self, drift_regime: str = "nominal") -> MLOpsDriftResponse:
+        if not self.is_ready:
+            self.initialize()
+        return self.drift_monitor.evaluate_drift(drift_regime=drift_regime)
+
+    def run_pareto_frontier(self, demand_multiplier: float = 1.0) -> ParetoFrontierResponse:
+        if not self.is_ready:
+            self.initialize()
+        return self.pareto_optimizer.compute_frontier(
+            nodes=self._cached_nodes, demand_multiplier=demand_multiplier
+        )
+
     def run_scenario_simulation(
         self, req: ScenarioSimulationRequest
     ) -> ScenarioSimulationResponse:
@@ -186,7 +216,6 @@ class ControlTowerOrchestrator:
             lead_time_shock_multiplier=req.lead_time_shock_multiplier,
         )
 
-        # Compute aggregate network SLA risk and resilience index (0..100)
         avg_delay_risk = 0.0
         stop_count = 0
         for route in vrp_res.routes:
@@ -258,6 +287,9 @@ class ControlTowerOrchestrator:
         forecast = self.run_demand_forecast()
         inventory = self.run_inventory_optimization()
         sample_eta = self.run_eta_prediction(ETAPredictionRequest())
+        anomalies = self.run_anomaly_detection(top_k=12)
+        drift = self.run_drift_evaluation(drift_regime="nominal")
+        pareto = self.run_pareto_frontier(demand_multiplier=1.0)
 
         return {
             "status": "operational",
@@ -267,9 +299,13 @@ class ControlTowerOrchestrator:
                 "demand_forecaster": self.demand_forecaster.metrics,
                 "demand_feature_importances": self.demand_forecaster.feature_importances,
                 "eta_predictor": self.eta_predictor.metrics,
+                "anomaly_detector": self.anomaly_detector.validation_metrics,
             },
             "vrp": vrp.model_dump(),
             "default_forecast": forecast.model_dump(),
             "inventory": inventory.model_dump(),
             "sample_eta": sample_eta.model_dump(),
+            "anomalies": anomalies.model_dump(),
+            "mlops_drift": drift.model_dump(),
+            "pareto_frontier": pareto.model_dump(),
         }

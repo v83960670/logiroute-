@@ -134,6 +134,9 @@
     <button class="tab-btn" data-tab="tab-inventory">
       <span class="tab-num">04</span> Multi-Echelon Stochastic Inventory ((s, S) Policy)
     </button>
+    <button class="tab-btn" data-tab="tab-mlops">
+      <span class="tab-num">05</span> MLOps Drift, Anomalies &amp; Pareto Frontier
+    </button>
   </nav>
 
   <!-- MAIN WORKSPACE CONTAINER -->
@@ -489,6 +492,121 @@
               </tr>
             </thead>
             <tbody id="inv-policies-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 5: MLOPS DRIFT, ANOMALIES & PARETO FRONTIER ==================== -->
+    <section id="tab-mlops" class="tab-panel">
+      <!-- Top Controls for MLOps Covariate Drift Simulation -->
+      <div class="panel forecast-controls-bar">
+        <div class="control-inline">
+          <label for="mlops-drift-select">Simulate Production Telemetry Stream Regime</label>
+          <select id="mlops-drift-select">
+            <option value="nominal" selected>Nominal In-Distribution Stream (PSI &lt; 0.10)</option>
+            <option value="seasonal_shift">Moderate Festive / Seasonal Drift (0.10 ≤ PSI &lt; 0.25)</option>
+            <option value="monsoon_cov_shift">Severe Monsoon &amp; Bullwhip Covariate Shift (PSI ≥ 0.25)</option>
+          </select>
+        </div>
+        <div class="control-inline">
+          <label>Model Governance Health Score</label>
+          <div>
+            <strong id="mlops-health-score" class="mono" style="font-size:18px;color:#10b981">-- / 100</strong>
+            <span id="mlops-retrain-badge" class="badge badge-ok" style="margin-left:8px">STABLE</span>
+          </div>
+        </div>
+        <button id="btn-run-mlops-drift" class="btn-primary">Evaluate PSI &amp; KS Drift</button>
+      </div>
+
+      <div class="prescriptive-callout mt-12" id="mlops-retrain-callout">
+        <strong>Automated MLOps Retraining Gate:</strong>
+        <p id="mlops-retrain-reason">--</p>
+      </div>
+
+      <!-- Charts Row: Pareto Frontier + Feature Drift PSI -->
+      <div class="forecast-grid mt-16">
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Multi-Objective Pareto Frontier (Daily Cost vs. Carbon CO₂e vs. SLA)</h2>
+              <span class="sub-caption">Compares 6 fleet dispatch &amp; electrification policies • Non-dominated Pareto frontier highlighted</span>
+            </div>
+            <span class="badge badge-info">Multi-Objective OR</span>
+          </div>
+          <div class="chart-wrapper-med">
+            <canvas id="pareto-frontier-chart"></canvas>
+          </div>
+          <div class="table-scroll mt-12">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Policy ID &amp; Strategy</th>
+                  <th>Daily Cost</th>
+                  <th>Daily CO₂e</th>
+                  <th>Fleet Dist</th>
+                  <th>EV Share</th>
+                  <th>Expected SLA</th>
+                  <th>Optimality</th>
+                </tr>
+              </thead>
+              <tbody id="pareto-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Covariate Shift &amp; Prediction Drift (PSI / KS-Test / Wasserstein)</h2>
+              <span class="sub-caption">PSI &lt; 0.10 = Stable • 0.10–0.25 = Moderate Drift • ≥ 0.25 = Critical Retrain Trigger</span>
+            </div>
+            <span class="badge badge-neutral">SciPy KS + PSI</span>
+          </div>
+          <div class="chart-wrapper-sm">
+            <canvas id="mlops-psi-chart"></canvas>
+          </div>
+          <div class="table-scroll mt-12">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Feature / Output</th>
+                  <th>Ref Mean → Cur</th>
+                  <th>PSI</th>
+                  <th>KS Stat (p-val)</th>
+                  <th>Wasserstein</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="mlops-drift-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Multivariate IsolationForest Anomaly Feed -->
+      <div class="panel mt-16">
+        <div class="panel-header">
+          <div>
+            <h2>Multivariate Supply Chain Anomaly Detection Feed (IsolationForest + Robust Z-Score)</h2>
+            <span class="sub-caption">Detects Cold-Chain Reefer Thermal Excursions, Port/Dock Dwell Spikes, Bullwhip Demand Surges, and Supplier Fill-Rate Drops</span>
+          </div>
+          <span class="mono badge badge-info" id="anom-metrics-badge">ROC-AUC: -- | F1: --</span>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Event ID &amp; Time</th>
+                <th>Hub &amp; SKU</th>
+                <th>Anomaly Type</th>
+                <th>Severity</th>
+                <th>IForest Score</th>
+                <th>Primary Root-Cause Signal (Z-Score)</th>
+                <th>Automated Mitigation Playbook</th>
+              </tr>
+            </thead>
+            <tbody id="anomalies-tbody"></tbody>
           </table>
         </div>
       </div>
