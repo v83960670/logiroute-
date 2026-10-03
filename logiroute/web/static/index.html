@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LogiRoute AI — Enterprise Supply Chain &amp; Logistics Control Tower</title>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Leaflet CSS for Geospatial Routing Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <!-- Top Command Header -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="brand-logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M12 2L2 7l10 5 10-5-10-5z" />
+          <path d="M2 17l10 5 10-5" />
+          <path d="M2 12l10 5 10-5" />
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">
+          LOGIROUTE <span class="brand-accent">// AI</span>
+          <span class="version-pill">v1.0.0</span>
+        </div>
+        <div class="brand-subtitle">
+          Enterprise Supply Chain &amp; Logistics Intelligence • CQR Quantile GBDT + CVRPTW Solver
+        </div>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <div class="scenario-presets">
+        <span class="preset-label">STRESS PRESETS:</span>
+        <button class="btn-preset active" data-preset="baseline">Nominal Ops</button>
+        <button class="btn-preset" data-preset="festive">Festive Surge (+35%)</button>
+        <button class="btn-preset" data-preset="monsoon">Monsoon Disruption</button>
+        <button class="btn-preset" data-preset="supply_shock">Lead-Time Shock</button>
+      </div>
+      <div class="system-status">
+        <span class="status-dot"></span>
+        <span id="engine-status-text">ML Engine Ready</span>
+      </div>
+      <a href="/docs" target="_blank" rel="noopener" class="btn-docs">OpenAPI /docs ↗</a>
+    </div>
+  </header>
+
+  <!-- Executive Scenario Banner (appears when stress scenario simulated) -->
+  <section id="scenario-alert-banner" class="scenario-banner hidden">
+    <div class="scenario-banner-header">
+      <div>
+        <span class="badge badge-warn" id="sim-banner-title">SCENARIO ACTIVE</span>
+        <strong id="sim-banner-resilience">Network Resilience Score: 91.4 / 100</strong>
+        <span class="sim-banner-meta" id="sim-banner-sla">Mean SLA Breach Risk: 14.2%</span>
+      </div>
+      <button id="btn-close-banner" class="btn-icon" title="Dismiss">✕</button>
+    </div>
+    <ul id="sim-recommendations-list" class="sim-rec-list"></ul>
+  </section>
+
+  <!-- Executive KPI Strip -->
+  <section class="kpi-strip">
+    <div class="kpi-card">
+      <div class="kpi-label">OPTIMIZED FLEET DISTANCE</div>
+      <div class="kpi-value-row">
+        <span class="kpi-value mono" id="kpi-opt-dist">-- km</span>
+        <span class="kpi-delta positive mono" id="kpi-dist-pct">--%</span>
+      </div>
+      <div class="kpi-subtext" id="kpi-dist-sub">vs. Unoptimized Baseline</div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-label">DAILY DISPATCH COST</div>
+      <div class="kpi-value-row">
+        <span class="kpi-value mono" id="kpi-opt-cost">$--</span>
+        <span class="kpi-delta positive mono" id="kpi-cost-pct">--%</span>
+      </div>
+      <div class="kpi-subtext" id="kpi-cost-sub">Net Daily Savings: $--</div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-label">CARBON EMISSIONS AVOIDED</div>
+      <div class="kpi-value-row">
+        <span class="kpi-value mono" id="kpi-co2-saved">-- kg</span>
+        <span class="kpi-badge-mini">CO₂e</span>
+      </div>
+      <div class="kpi-subtext" id="kpi-fleet-util">Fleet Utilization: --%</div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-label">DEMAND FORECAST ACCURACY</div>
+      <div class="kpi-value-row">
+        <span class="kpi-value mono" id="kpi-forecast-acc">--%</span>
+        <span class="kpi-delta neutral mono" id="kpi-forecast-r2">R² --</span>
+      </div>
+      <div class="kpi-subtext" id="kpi-forecast-cov">CQR P10–P90 Coverage: --%</div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-label">ETA &amp; SLA RISK ROC-AUC</div>
+      <div class="kpi-value-row">
+        <span class="kpi-value mono" id="kpi-eta-auc">--</span>
+        <span class="kpi-delta positive mono" id="kpi-eta-mae">MAE --m</span>
+      </div>
+      <div class="kpi-subtext" id="kpi-eta-brier">Brier Calibration: --</div>
+    </div>
+
+    <div class="kpi-card">
+      <div class="kpi-label">INVENTORY REPLENISHMENT</div>
+      <div class="kpi-value-row">
+        <span class="kpi-value mono" id="kpi-inv-reorders">-- SKUs</span>
+        <span class="kpi-delta warn mono" id="kpi-inv-critical">-- Critical</span>
+      </div>
+      <div class="kpi-subtext" id="kpi-inv-po">Recommended PO: $--</div>
+    </div>
+  </section>
+
+  <!-- Primary Navigation Tabs -->
+  <nav class="module-tabs">
+    <button class="tab-btn active" data-tab="tab-routing">
+      <span class="tab-num">01</span> CVRPTW Fleet Routing &amp; Live Map
+    </button>
+    <button class="tab-btn" data-tab="tab-forecast">
+      <span class="tab-num">02</span> Probabilistic Demand Forecasting (CQR GBDT)
+    </button>
+    <button class="tab-btn" data-tab="tab-eta">
+      <span class="tab-num">03</span> Traffic-Aware ETA &amp; SLA Delay Risk Lab
+    </button>
+    <button class="tab-btn" data-tab="tab-inventory">
+      <span class="tab-num">04</span> Multi-Echelon Stochastic Inventory ((s, S) Policy)
+    </button>
+    <button class="tab-btn" data-tab="tab-mlops">
+      <span class="tab-num">05</span> MLOps Drift, Anomalies &amp; Pareto Frontier
+    </button>
+  </nav>
+
+  <!-- MAIN WORKSPACE CONTAINER -->
+  <main class="workspace">
+
+    <!-- ==================== TAB 1: CVRPTW ROUTING & LIVE MAP ==================== -->
+    <section id="tab-routing" class="tab-panel active">
+      <div class="routing-grid">
+        <!-- Left Sidebar: Solver Controls -->
+        <aside class="panel solver-sidebar">
+          <div class="panel-header">
+            <h2>CVRPTW Solver Parameters</h2>
+            <span class="badge badge-info">OR Engine</span>
+          </div>
+          <p class="panel-desc">
+            Clarke-Wright Parallel Savings construction + Intra-Route 2-Opt &amp; Inter-Route Relocate metaheuristics with heterogeneous fleet assignment.
+          </p>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="vrp-demand-mult">Network Demand Multiplier</label>
+              <span class="mono control-val" id="vrp-demand-mult-val">1.00x</span>
+            </div>
+            <input type="range" id="vrp-demand-mult" min="0.50" max="2.20" step="0.05" value="1.00" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="vrp-traffic">Corridor Traffic Congestion Index</label>
+              <span class="mono control-val" id="vrp-traffic-val">0.35</span>
+            </div>
+            <input type="range" id="vrp-traffic" min="0.05" max="0.95" step="0.05" value="0.35" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="vrp-weather">Weather &amp; Monsoon Severity</label>
+              <span class="mono control-val" id="vrp-weather-val">0.15</span>
+            </div>
+            <input type="range" id="vrp-weather" min="0.00" max="0.95" step="0.05" value="0.15" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="vrp-cap-scale">Fleet Payload Capacity Scale</label>
+              <span class="mono control-val" id="vrp-cap-scale-val">1.00x</span>
+            </div>
+            <input type="range" id="vrp-cap-scale" min="0.60" max="1.50" step="0.05" value="1.00" />
+          </div>
+
+          <div class="control-group checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="vrp-two-opt" checked />
+              <span>Enable 2-Opt + Inter-Route Relocate Local Search</span>
+            </label>
+          </div>
+
+          <button id="btn-run-vrp" class="btn-primary full-width">
+            Re-Optimize Multi-Stop Routes
+          </button>
+
+          <div class="solver-telemetry-box">
+            <div class="telemetry-row">
+              <span>Algorithm</span>
+              <strong id="vrp-algo-name" class="mono">CW + 2-Opt + Relocate</strong>
+            </div>
+            <div class="telemetry-row">
+              <span>Local Search Moves</span>
+              <strong id="vrp-two-opt-iters" class="mono">--</strong>
+            </div>
+            <div class="telemetry-row">
+              <span>Solver Runtime</span>
+              <strong id="vrp-solve-ms" class="mono">-- ms</strong>
+            </div>
+            <div class="telemetry-row">
+              <span>On-Time SLA Compliance</span>
+              <strong id="vrp-otd-rate" class="mono">--%</strong>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Center Map + Fleet Cards -->
+        <div class="routing-main">
+          <div class="panel map-panel">
+            <div class="panel-header">
+              <div>
+                <h2>Geospatial Multi-Stop Dispatch Topology (Eastern Logistics Corridor)</h2>
+                <span class="sub-caption">Click any route or delivery hub marker to inspect arrival window, payload, and SLA delay risk</span>
+              </div>
+              <div id="route-filter-pills" class="route-pills"></div>
+            </div>
+            <div id="leaflet-map" class="map-canvas"></div>
+          </div>
+
+          <!-- Active Fleet Summary Cards -->
+          <div id="fleet-cards-container" class="fleet-cards-grid"></div>
+        </div>
+      </div>
+
+      <!-- Stop-by-Stop Dispatch Schedule Table -->
+      <div class="panel mt-16">
+        <div class="panel-header">
+          <h2>Stop-by-Stop Vehicle Dispatch Manifest &amp; Time-Window Schedule</h2>
+          <span class="mono sub-caption" id="manifest-summary-badge">-- stops scheduled</span>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Vehicle ID</th>
+                <th>Vehicle Class</th>
+                <th>Stop #</th>
+                <th>Node ID &amp; Facility Name</th>
+                <th>City</th>
+                <th>Time Window</th>
+                <th>Arrival → Departure</th>
+                <th>Leg Dist</th>
+                <th>Delivered Load</th>
+                <th>SLA Risk</th>
+                <th>SLA Status</th>
+              </tr>
+            </thead>
+            <tbody id="vrp-stops-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: PROBABILISTIC DEMAND FORECASTING ==================== -->
+    <section id="tab-forecast" class="tab-panel">
+      <div class="forecast-controls-bar panel">
+        <div class="control-inline">
+          <label for="fc-sku-select">SKU Product Line</label>
+          <select id="fc-sku-select"></select>
+        </div>
+        <div class="control-inline">
+          <label for="fc-hub-select">Distribution Hub</label>
+          <select id="fc-hub-select"></select>
+        </div>
+        <div class="control-inline">
+          <label for="fc-horizon-select">Forecast Horizon</label>
+          <select id="fc-horizon-select">
+            <option value="7">7 Days Ahead</option>
+            <option value="14" selected>14 Days Ahead</option>
+            <option value="21">21 Days Ahead</option>
+            <option value="28">28 Days Ahead</option>
+          </select>
+        </div>
+        <div class="control-inline">
+          <label for="fc-demand-mult">Macro Demand Shock</label>
+          <select id="fc-demand-mult">
+            <option value="0.85">0.85x (Contraction)</option>
+            <option value="1.0" selected>1.00x (Baseline)</option>
+            <option value="1.20">1.20x (Promo Campaign)</option>
+            <option value="1.40">1.40x (Festive Peak Surge)</option>
+          </select>
+        </div>
+        <button id="btn-run-forecast" class="btn-primary">Generate Forecast</button>
+      </div>
+
+      <div class="forecast-grid mt-16">
+        <div class="panel chart-panel-wide">
+          <div class="panel-header">
+            <div>
+              <h2 id="fc-chart-title">Probabilistic Demand Fan Chart (P10 / P50 / P90 Conformal Interval)</h2>
+              <span class="sub-caption">Solid cyan = Historical Actuals • Dashed emerald = P50 Median Forecast • Shaded band = Calibrated 80% CQR Interval [P10, P90]</span>
+            </div>
+            <span class="badge badge-info">Quantile GBDT + CQR</span>
+          </div>
+          <div class="chart-wrapper-tall">
+            <canvas id="demand-fan-chart"></canvas>
+          </div>
+        </div>
+
+        <div class="panel feature-panel">
+          <div class="panel-header">
+            <h2>Permutation Feature Importances</h2>
+            <span class="badge badge-neutral">SHAP / Permutation</span>
+          </div>
+          <div class="chart-wrapper-med">
+            <canvas id="feature-imp-chart"></canvas>
+          </div>
+
+          <div class="metrics-mini-grid mt-12">
+            <div class="metric-box">
+              <span class="m-label">Holdout WMAPE</span>
+              <strong class="mono" id="fc-metric-wmape">--%</strong>
+            </div>
+            <div class="metric-box">
+              <span class="m-label">Holdout RMSE</span>
+              <strong class="mono" id="fc-metric-rmse">--</strong>
+            </div>
+            <div class="metric-box">
+              <span class="m-label">R² Score</span>
+              <strong class="mono" id="fc-metric-r2">--</strong>
+            </div>
+            <div class="metric-box">
+              <span class="m-label">P10–P90 Coverage</span>
+              <strong class="mono" id="fc-metric-cov">--%</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: TRAFFIC-AWARE ETA & SLA DELAY RISK LAB ==================== -->
+    <section id="tab-eta" class="tab-panel">
+      <div class="eta-grid">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Shipment Telemetry &amp; Route Conditions</h2>
+            <span class="badge badge-info">Real-Time Inference</span>
+          </div>
+          <p class="panel-desc">
+            Configure shipment dispatch parameters to run the Gradient Boosted ETA Regressor, P90 Tail Estimator, and Calibrated SLA Delay Risk Classifier.
+          </p>
+
+          <div class="form-grid-2">
+            <div class="control-group">
+              <label for="eta-origin">Origin Hub</label>
+              <select id="eta-origin"></select>
+            </div>
+            <div class="control-group">
+              <label for="eta-dest">Destination Hub</label>
+              <select id="eta-dest"></select>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="eta-dep-hour">Departure Time (24h Clock)</label>
+              <span class="mono control-val" id="eta-dep-hour-val">08:30</span>
+            </div>
+            <input type="range" id="eta-dep-hour" min="5.5" max="21.5" step="0.25" value="8.5" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="eta-traffic">Live Corridor Traffic Congestion</label>
+              <span class="mono control-val" id="eta-traffic-val">0.45</span>
+            </div>
+            <input type="range" id="eta-traffic" min="0.05" max="0.95" step="0.05" value="0.45" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label for="eta-weather">Precipitation / Weather Severity</label>
+              <span class="mono control-val" id="eta-weather-val">0.20</span>
+            </div>
+            <input type="range" id="eta-weather" min="0.00" max="0.95" step="0.05" value="0.20" />
+          </div>
+
+          <div class="form-grid-2">
+            <div class="control-group">
+              <label for="eta-payload">Payload Weight (kg)</label>
+              <input type="number" id="eta-payload" value="2400" min="100" max="15000" step="100" />
+            </div>
+            <div class="control-group">
+              <label for="eta-sla">Promised SLA Target (min)</label>
+              <input type="number" id="eta-sla" value="65" min="20" max="600" step="5" />
+            </div>
+          </div>
+
+          <button id="btn-run-eta" class="btn-primary full-width mt-12">
+            Predict ETA &amp; Decompose SLA Risk
+          </button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>ML Inference &amp; Counterfactual Attribution</h2>
+            <span id="eta-risk-badge" class="badge badge-info">LOW RISK</span>
+          </div>
+
+          <div class="eta-hero-cards">
+            <div class="eta-stat-card">
+              <span class="eta-stat-label">Predicted Mean ETA</span>
+              <strong class="eta-stat-val mono" id="eta-res-mean">-- min</strong>
+              <span class="eta-stat-sub mono" id="eta-res-dist">Road Dist: -- km</span>
+            </div>
+            <div class="eta-stat-card">
+              <span class="eta-stat-label">P90 Tail Transit Time</span>
+              <strong class="eta-stat-val mono" id="eta-res-p90">-- min</strong>
+              <span class="eta-stat-sub mono" id="eta-res-ff">Free-Flow: -- min</span>
+            </div>
+            <div class="eta-stat-card">
+              <span class="eta-stat-label">SLA Breach Probability</span>
+              <strong class="eta-stat-val mono" id="eta-res-prob">--%</strong>
+              <span class="eta-stat-sub mono" id="eta-res-sla">SLA Target: -- min</span>
+            </div>
+          </div>
+
+          <div class="prescriptive-callout" id="eta-action-box">
+            <strong>Prescriptive Dispatch Recommendation:</strong>
+            <p id="eta-res-action">--</p>
+          </div>
+
+          <h3 class="section-subhead">Counterfactual Transit Time Decomposition (Minutes)</h3>
+          <div class="chart-wrapper-sm">
+            <canvas id="eta-attribution-chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: STOCHASTIC INVENTORY OPTIMIZATION ==================== -->
+    <section id="tab-inventory" class="tab-panel">
+      <div class="panel forecast-controls-bar">
+        <div class="control-inline">
+          <label for="inv-csl-slider">Target Cycle Service Level (α): <strong id="inv-csl-val" class="mono">96.0%</strong></label>
+          <input type="range" id="inv-csl-slider" min="0.85" max="0.995" step="0.005" value="0.96" />
+        </div>
+        <div class="control-inline">
+          <label for="inv-lt-slider">Supplier Lead-Time Shock: <strong id="inv-lt-val" class="mono">1.00x</strong></label>
+          <input type="range" id="inv-lt-slider" min="0.75" max="2.25" step="0.05" value="1.00" />
+        </div>
+        <div class="control-inline">
+          <label for="inv-status-filter">Filter Policy Status</label>
+          <select id="inv-status-filter">
+            <option value="ALL">All SKU × Hub Nodes</option>
+            <option value="CRITICAL_STOCKOUT_RISK">Critical Stockout Risk Only</option>
+            <option value="REORDER_TRIGGERED">Reorder Triggered Only</option>
+            <option value="OPTIMAL_BUFFER">Optimal Buffer Only</option>
+          </select>
+        </div>
+        <button id="btn-run-inventory" class="btn-primary">Recalculate (s, S) Policy</button>
+      </div>
+
+      <div class="panel mt-16">
+        <div class="panel-header">
+          <div>
+            <h2>Multi-Echelon Continuous-Review (s, S) &amp; Safety Stock Matrix</h2>
+            <span class="sub-caption">Safety Stock SS = z_α · √(μ_L·σ_D² + μ_D²·σ_L²) • Reorder Point ROP = μ_D·μ_L + SS • Order-Up-To S = ROP + EOQ</span>
+          </div>
+          <span class="mono badge badge-info" id="inv-total-cost-badge">Annual Policy Cost: $--</span>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>SKU ID &amp; Product</th>
+                <th>Distribution Hub</th>
+                <th>Daily Demand (μ ± σ)</th>
+                <th>Lead Time (d)</th>
+                <th>On-Hand (+Transit)</th>
+                <th>Safety Stock (SS)</th>
+                <th>Reorder Pt (ROP)</th>
+                <th>EOQ</th>
+                <th>Days of Supply</th>
+                <th>Stockout Risk</th>
+                <th>Policy Status</th>
+                <th>Recommended PO</th>
+              </tr>
+            </thead>
+            <tbody id="inv-policies-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 5: MLOPS DRIFT, ANOMALIES & PARETO FRONTIER ==================== -->
+    <section id="tab-mlops" class="tab-panel">
+      <!-- Top Controls for MLOps Covariate Drift Simulation -->
+      <div class="panel forecast-controls-bar">
+        <div class="control-inline">
+          <label for="mlops-drift-select">Simulate Production Telemetry Stream Regime</label>
+          <select id="mlops-drift-select">
+            <option value="nominal" selected>Nominal In-Distribution Stream (PSI &lt; 0.10)</option>
+            <option value="seasonal_shift">Moderate Festive / Seasonal Drift (0.10 ≤ PSI &lt; 0.25)</option>
+            <option value="monsoon_cov_shift">Severe Monsoon &amp; Bullwhip Covariate Shift (PSI ≥ 0.25)</option>
+          </select>
+        </div>
+        <div class="control-inline">
+          <label>Model Governance Health Score</label>
+          <div>
+            <strong id="mlops-health-score" class="mono" style="font-size:18px;color:#10b981">-- / 100</strong>
+            <span id="mlops-retrain-badge" class="badge badge-ok" style="margin-left:8px">STABLE</span>
+          </div>
+        </div>
+        <button id="btn-run-mlops-drift" class="btn-primary">Evaluate PSI &amp; KS Drift</button>
+      </div>
+
+      <div class="prescriptive-callout mt-12" id="mlops-retrain-callout">
+        <strong>Automated MLOps Retraining Gate:</strong>
+        <p id="mlops-retrain-reason">--</p>
+      </div>
+
+      <!-- Charts Row: Pareto Frontier + Feature Drift PSI -->
+      <div class="forecast-grid mt-16">
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Multi-Objective Pareto Frontier (Daily Cost vs. Carbon CO₂e vs. SLA)</h2>
+              <span class="sub-caption">Compares 6 fleet dispatch &amp; electrification policies • Non-dominated Pareto frontier highlighted</span>
+            </div>
+            <span class="badge badge-info">Multi-Objective OR</span>
+          </div>
+          <div class="chart-wrapper-med">
+            <canvas id="pareto-frontier-chart"></canvas>
+          </div>
+          <div class="table-scroll mt-12">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Policy ID &amp; Strategy</th>
+                  <th>Daily Cost</th>
+                  <th>Daily CO₂e</th>
+                  <th>Fleet Dist</th>
+                  <th>EV Share</th>
+                  <th>Expected SLA</th>
+                  <th>Optimality</th>
+                </tr>
+              </thead>
+              <tbody id="pareto-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Covariate Shift &amp; Prediction Drift (PSI / KS-Test / Wasserstein)</h2>
+              <span class="sub-caption">PSI &lt; 0.10 = Stable • 0.10–0.25 = Moderate Drift • ≥ 0.25 = Critical Retrain Trigger</span>
+            </div>
+            <span class="badge badge-neutral">SciPy KS + PSI</span>
+          </div>
+          <div class="chart-wrapper-sm">
+            <canvas id="mlops-psi-chart"></canvas>
+          </div>
+          <div class="table-scroll mt-12">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Feature / Output</th>
+                  <th>Ref Mean → Cur</th>
+                  <th>PSI</th>
+                  <th>KS Stat (p-val)</th>
+                  <th>Wasserstein</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="mlops-drift-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Multivariate IsolationForest Anomaly Feed -->
+      <div class="panel mt-16">
+        <div class="panel-header">
+          <div>
+            <h2>Multivariate Supply Chain Anomaly Detection Feed (IsolationForest + Robust Z-Score)</h2>
+            <span class="sub-caption">Detects Cold-Chain Reefer Thermal Excursions, Port/Dock Dwell Spikes, Bullwhip Demand Surges, and Supplier Fill-Rate Drops</span>
+          </div>
+          <span class="mono badge badge-info" id="anom-metrics-badge">ROC-AUC: -- | F1: --</span>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Event ID &amp; Time</th>
+                <th>Hub &amp; SKU</th>
+                <th>Anomaly Type</th>
+                <th>Severity</th>
+                <th>IForest Score</th>
+                <th>Primary Root-Cause Signal (Z-Score)</th>
+                <th>Automated Mitigation Playbook</th>
+              </tr>
+            </thead>
+            <tbody id="anomalies-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- External Visualization Libraries -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

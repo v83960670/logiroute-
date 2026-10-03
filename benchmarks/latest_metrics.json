@@ -1,0 +1,160 @@
+{
+  "initialization": {
+    "status": "initialized",
+    "startup_time_ms": 4446.6,
+    "demand_forecaster_metrics": {
+      "mape_pct": 7.68,
+      "wmape_pct": 7.86,
+      "rmse_units": 20.83,
+      "r2_score": 0.9579,
+      "interval_80_coverage_pct": 81.78,
+      "cqr_calibration_margin_units": 4.35,
+      "pinball_loss_p50": 6.548,
+      "train_samples": 9210,
+      "validation_samples": 900
+    },
+    "eta_predictor_metrics": {
+      "eta_mae_min": 2.56,
+      "eta_rmse_min": 3.79,
+      "eta_r2_score": 0.994,
+      "sla_roc_auc": 0.9908,
+      "sla_brier_score": 0.0455,
+      "sla_f1_score": 0.9464,
+      "train_shipments": 2800,
+      "validation_shipments": 700
+    },
+    "anomaly_detector_metrics": {
+      "roc_auc": 0.9999,
+      "pr_auc": 0.9987,
+      "f1_score": 0.961,
+      "precision": 0.9487,
+      "recall": 0.9737,
+      "total_stream_events": 600
+    }
+  },
+  "vrp_benchmark": {
+    "optimized_distance_km": 342.63,
+    "baseline_distance_km": 612.39,
+    "distance_saved_km": 269.75,
+    "distance_reduction_pct": 44.05,
+    "optimized_cost_usd": 706.55,
+    "baseline_cost_usd": 1549.59,
+    "cost_saved_usd": 843.04,
+    "cost_reduction_pct": 54.4,
+    "optimized_co2_kg": 226.63,
+    "baseline_co2_kg": 477.66,
+    "co2_saved_kg": 251.03,
+    "vehicles_dispatched": 4,
+    "total_fleet_utilization_pct": 81.6,
+    "on_time_delivery_rate_pct": 100.0,
+    "solver_algorithm": "Clarke-Wright Parallel Savings + 2-Opt + Inter-Route Relocate",
+    "two_opt_iterations": 0,
+    "solve_time_ms": 1.63
+  },
+  "pareto_frontier": {
+    "evaluated_policies": 6,
+    "pareto_optimal_count": 4,
+    "recommended_policy_id": "POL-PARETO-BAL",
+    "solutions": [
+      {
+        "policy_id": "POL-EV-GREEN",
+        "policy_name": "Zero-Emission EV-First Priority",
+        "description": "Prioritizes 4.5T Electric Cargo Vans across all short/medium rings; minimizes CO2e.",
+        "daily_cost_usd": 678.29,
+        "daily_co2_kg": 99.72,
+        "total_distance_km": 380.32,
+        "expected_sla_otd_pct": 95.8,
+        "ev_fleet_share_pct": 83.3,
+        "vehicles_dispatched": 6,
+        "is_pareto_optimal": true
+      },
+      {
+        "policy_id": "POL-PARETO-BAL",
+        "policy_name": "LogiRoute Balanced (CW + 2-Opt + Relocate)",
+        "description": "Recommended knee-point solution balancing heterogeneous fleet cost, CO2, and SLA.",
+        "daily_cost_usd": 706.55,
+        "daily_co2_kg": 226.63,
+        "total_distance_km": 342.63,
+        "expected_sla_otd_pct": 97.6,
+        "ev_fleet_share_pct": 50.0,
+        "vehicles_dispatched": 4,
+        "is_pareto_optimal": true
+      },
+      {
+        "policy_id": "POL-HYPER-CONSOL",
+        "policy_name": "Max-Consolidation Heavy Linehaul",
+        "description": "Maximizes cargo consolidation into 16T/9T trucks to minimize fixed dispatch overhead.",
+        "daily_cost_usd": 628.83,
+        "daily_co2_kg": 281.02,
+        "total_distance_km": 322.07,
+        "expected_sla_otd_pct": 92.4,
+        "ev_fleet_share_pct": 0.0,
+        "vehicles_dispatched": 3,
+        "is_pareto_optimal": true
+      },
+      {
+        "policy_id": "POL-SLA-EXPRESS",
+        "policy_name": "Ultra-Responsive SLA Express Wave",
+        "description": "Dispatches dedicated direct waves for critical pharma & air-cargo time windows.",
+        "daily_cost_usd": 861.99,
+        "daily_co2_kg": 206.23,
+        "total_distance_km": 397.45,
+        "expected_sla_otd_pct": 99.6,
+        "ev_fleet_share_pct": 60.0,
+        "vehicles_dispatched": 6,
+        "is_pareto_optimal": true
+      },
+      {
+        "policy_id": "POL-CW-GREEDY",
+        "policy_name": "Clarke-Wright Construction (No 2-Opt)",
+        "description": "Greedy savings construction without intra-route 2-Opt or inter-route relocate.",
+        "daily_cost_usd": 805.47,
+        "daily_co2_kg": 267.42,
+        "total_distance_km": 383.75,
+        "expected_sla_otd_pct": 93.5,
+        "ev_fleet_share_pct": 25.0,
+        "vehicles_dispatched": 4,
+        "is_pareto_optimal": false
+      },
+      {
+        "policy_id": "POL-LEGACY-BASE",
+        "policy_name": "Unoptimized Legacy Dispatch Baseline",
+        "description": "Traditional 2-stop FIFO dispatch using standard heavy diesel trucks.",
+        "daily_cost_usd": 1549.59,
+        "daily_co2_kg": 477.66,
+        "total_distance_km": 612.39,
+        "expected_sla_otd_pct": 86.5,
+        "ev_fleet_share_pct": 0.0,
+        "vehicles_dispatched": 8,
+        "is_pareto_optimal": false
+      }
+    ]
+  },
+  "inventory_summary": {
+    "target_service_level_pct": 96.0,
+    "total_skus_evaluated": 30,
+    "critical_stockout_alerts": 7,
+    "reorder_triggered_count": 13,
+    "total_recommended_po_value_usd": 1250197.5,
+    "total_annual_inventory_cost_usd": 695728.61
+  },
+  "anomaly_detection": {
+    "detector_algorithm": "IsolationForest (160 Trees) + Multivariate Robust Z-Score",
+    "anomalies_detected": 39,
+    "anomaly_rate_pct": 6.5,
+    "validation_metrics": {
+      "roc_auc": 0.9999,
+      "pr_auc": 0.9987,
+      "f1_score": 0.961,
+      "precision": 0.9487,
+      "recall": 0.9737,
+      "total_stream_events": 600.0
+    }
+  },
+  "mlops_drift_regimes": {
+    "nominal_health_score": 97.8,
+    "nominal_retrain": false,
+    "monsoon_shift_health_score": 22.0,
+    "monsoon_shift_retrain": true
+  }
+}
